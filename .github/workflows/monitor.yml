@@ -1,0 +1,34 @@
+name: Monitor EISN SILSO
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Ejecutar monitor
+        run: python monitor.py
+
+      - name: Guardar cambios
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add eisn_history.csv
+
+          if git diff --cached --quiet; then
+            echo "No hay cambios que guardar."
+          else
+            git commit -m "Actualizar histórico EISN"
+            git push
+          fi
