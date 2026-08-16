@@ -2,18 +2,20 @@ import csv
 import time
 import random
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 URL = "https://www.sidc.be/SILSO/DATA/EISN/EISN_current.txt"
 CSV_FILE = Path("eisn_history.csv")
 
+# Lima = UTC-5
+LIMA_OFFSET = timedelta(hours=-5)
+
 
 def get_silso_data():
-    # Número de intentos antes de considerar que SILSO no está disponible.
     max_attempts = 6
 
-    # Esperas progresivas entre intentos.
+    # Esperas progresivas entre intentos
     wait_times = [5, 10, 20, 30, 45]
 
     for attempt in range(1, max_attempts + 1):
@@ -21,13 +23,19 @@ def get_silso_data():
             request = urllib.request.Request(
                 URL,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; sunspot-monitor/1.0)",
+                    "User-Agent": (
+                        "Mozilla/5.0 "
+                        "(compatible; sunspot-monitor/1.0)"
+                    ),
                     "Accept": "text/plain,*/*",
                     "Connection": "close",
                 },
             )
 
-            with urllib.request.urlopen(request, timeout=20) as response:
+            with urllib.request.urlopen(
+                request,
+                timeout=20
+            ) as response:
                 text = response.read().decode("utf-8")
 
             rows = []
@@ -66,11 +74,12 @@ def get_silso_data():
 
             if not rows:
                 raise RuntimeError(
-                    "SILSO respondió, pero no se encontraron datos válidos."
+                    "SILSO respondió, pero no se encontraron "
+                    "datos válidos."
                 )
 
             print(
-                f"Datos de SILSO obtenidos correctamente "
+                "Datos de SILSO obtenidos correctamente "
                 f"en el intento {attempt}."
             )
 
@@ -84,15 +93,12 @@ def get_silso_data():
 
             if attempt < max_attempts:
                 wait = wait_times[attempt - 1]
-
-                # Añadimos una pequeña variación para que dos intentos
-                # no se produzcan exactamente al mismo tiempo.
                 jitter = random.randint(0, 5)
                 total_wait = wait + jitter
 
                 print(
                     f"Esperando {total_wait} segundos "
-                    f"antes de volver a intentar..."
+                    "antes de volver a intentar..."
                 )
 
                 time.sleep(total_wait)
@@ -105,8 +111,17 @@ def get_silso_data():
 
 
 def save_data(rows):
-    now = datetime.now(timezone.utc).replace(microsecond=0)
-    captured_at = now.isoformat().replace("+00:00", "Z")
+    now_utc = datetime.now(timezone.utc).replace(microsecond=0)
+
+    now_lima = now_utc + LIMA_OFFSET
+
+    captured_utc = now_utc.strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    captured_lima = now_lima.strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
     file_exists = CSV_FILE.exists()
 
@@ -120,21 +135,21 @@ def save_data(rows):
         ) as f:
             existing_rows = list(csv.DictReader(f))
 
-    # La última fila válida de SILSO corresponde al dato más reciente.
     latest = rows[-1]
 
     if existing_rows:
         last = existing_rows[-1]
 
-        # Si todos los datos son exactamente iguales al último registro,
-        # no añadimos una nueva línea.
+        # Comparamos únicamente los datos de SILSO.
+        # La hora de captura no provoca una fila duplicada.
         if (
-            last["fecha"] == latest["fecha"]
-            and last["eisn"] == str(latest["eisn"])
-            and last["desviacion"] == str(latest["desviacion"])
-            and last["estaciones_usadas"]
+            last.get("fecha") == latest["fecha"]
+            and last.get("eisn") == str(latest["eisn"])
+            and last.get("desviacion")
+            == str(latest["desviacion"])
+            and last.get("estaciones_usadas")
             == str(latest["estaciones_usadas"])
-            and last["estaciones_disponibles"]
+            and last.get("estaciones_disponibles")
             == str(latest["estaciones_disponibles"])
         ):
             print(
@@ -152,31 +167,33 @@ def save_data(rows):
 
         if not file_exists:
             writer.writerow([
-                "captura_utc",
-                "fecha",
-                "fecha_decimal",
+                "hora_lima",
                 "eisn",
+                "hora_utc",
+                "fecha",
                 "desviacion",
                 "estaciones_usadas",
                 "estaciones_disponibles",
             ])
 
         writer.writerow([
-            captured_at,
-            latest["fecha"],
-            latest["fecha_decimal"],
+            captured_lima,
             latest["eisn"],
+            captured_utc,
+            latest["fecha"],
             latest["desviacion"],
             latest["estaciones_usadas"],
             latest["estaciones_disponibles"],
         ])
 
     print(
-        f"Guardado: {captured_at} | "
-        f"{latest['fecha']} | "
-        f"EISN {latest['eisn']} | "
+        f"Guardado | Lima: {captured_lima} | "
+        f"EISN: {latest['eisn']} | "
+        f"UTC: {captured_utc} | "
+        f"Fecha SILSO: {latest['fecha']} | "
+        f"Estaciones: "
         f"{latest['estaciones_usadas']}/"
-        f"{latest['estaciones_disponibles']} estaciones"
+        f"{latest['estaciones_disponibles']}"
     )
 
 
