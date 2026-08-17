@@ -11,6 +11,9 @@ CSV_FILE = Path("eisn_history.csv")
 # Lima = UTC-5
 LIMA_OFFSET = timedelta(hours=-5)
 
+# Cantidad máxima de registros que se conservarán
+MAX_REGISTROS = 10
+
 
 def get_silso_data():
     max_attempts = 6
@@ -123,11 +126,10 @@ def save_data(rows):
         "%Y-%m-%d %H:%M:%S"
     )
 
-    file_exists = CSV_FILE.exists()
-
     existing_rows = []
 
-    if file_exists:
+    # Leer histórico existente
+    if CSV_FILE.exists():
         with CSV_FILE.open(
             "r",
             newline="",
@@ -137,6 +139,7 @@ def save_data(rows):
 
     latest = rows[-1]
 
+    # Comprobar si el dato de SILSO cambió
     if existing_rows:
         last = existing_rows[-1]
 
@@ -158,33 +161,50 @@ def save_data(rows):
             )
             return
 
+    # Crear el nuevo registro
+    new_row = {
+        "hora_lima": captured_lima,
+        "eisn": str(latest["eisn"]),
+        "hora_utc": captured_utc,
+        "fecha": latest["fecha"],
+        "desviacion": str(latest["desviacion"]),
+        "estaciones_usadas": str(
+            latest["estaciones_usadas"]
+        ),
+        "estaciones_disponibles": str(
+            latest["estaciones_disponibles"]
+        ),
+    }
+
+    # Añadir el nuevo registro
+    existing_rows.append(new_row)
+
+    # Conservar solamente los últimos 10 registros
+    existing_rows = existing_rows[-MAX_REGISTROS:]
+
+    # Reescribir el archivo completo
     with CSV_FILE.open(
-        "a",
+        "w",
         newline="",
         encoding="utf-8"
     ) as f:
-        writer = csv.writer(f)
+        fieldnames = [
+            "hora_lima",
+            "eisn",
+            "hora_utc",
+            "fecha",
+            "desviacion",
+            "estaciones_usadas",
+            "estaciones_disponibles",
+        ]
 
-        if not file_exists:
-            writer.writerow([
-                "hora_lima",
-                "eisn",
-                "hora_utc",
-                "fecha",
-                "desviacion",
-                "estaciones_usadas",
-                "estaciones_disponibles",
-            ])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=fieldnames
+        )
 
-        writer.writerow([
-            captured_lima,
-            latest["eisn"],
-            captured_utc,
-            latest["fecha"],
-            latest["desviacion"],
-            latest["estaciones_usadas"],
-            latest["estaciones_disponibles"],
-        ])
+        writer.writeheader()
+        writer.writerows(existing_rows)
 
     print(
         f"Guardado | Lima: {captured_lima} | "
@@ -194,6 +214,11 @@ def save_data(rows):
         f"Estaciones: "
         f"{latest['estaciones_usadas']}/"
         f"{latest['estaciones_disponibles']}"
+    )
+
+    print(
+        f"Histórico limitado a los últimos "
+        f"{MAX_REGISTROS} registros."
     )
 
 
