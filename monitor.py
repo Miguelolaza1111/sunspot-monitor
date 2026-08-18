@@ -2,6 +2,8 @@ import csv
 import time
 import random
 import urllib.request
+import urllib.parse
+import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -113,6 +115,67 @@ def get_silso_data():
                 ) from e
 
 
+def send_telegram_message(latest, captured_lima):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+
+    if not token or not chat_id:
+        print(
+            "Telegram no configurado: faltan "
+            "TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID."
+        )
+        return
+
+    message = (
+        "☀️ Nuevo dato EISN de SILSO\n\n"
+        f"EISN: {latest['eisn']}\n"
+        f"Fecha y hora Lima: {captured_lima}\n"
+        f"D: {latest['desviacion']}   "
+        f"E: {latest['estaciones_usadas']}/"
+        f"{latest['estaciones_disponibles']}"
+    )
+
+    url = (
+        f"https://api.telegram.org/bot{token}/sendMessage"
+    )
+
+    data = (
+        f"chat_id={urllib.parse.quote(str(chat_id))}"
+        f"&text={urllib.parse.quote(message)}"
+    ).encode("utf-8")
+
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Content-Type": (
+                "application/x-www-form-urlencoded"
+            )
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=20
+        ) as response:
+            result = response.read().decode("utf-8")
+
+        if '"ok":true' in result:
+            print("Mensaje de Telegram enviado correctamente.")
+        else:
+            print(
+                "Telegram respondió con un resultado inesperado: "
+                f"{result}"
+            )
+
+    except Exception as e:
+        print(
+            f"No fue posible enviar el mensaje de Telegram: {e}"
+        )
+
+
 def save_data(rows):
     now_utc = datetime.now(timezone.utc).replace(microsecond=0)
 
@@ -219,6 +282,13 @@ def save_data(rows):
     print(
         f"Histórico limitado a los últimos "
         f"{MAX_REGISTROS} registros."
+    )
+
+    # Enviar Telegram solamente cuando se detectó
+    # y guardó un cambio real en SILSO.
+    send_telegram_message(
+        latest,
+        captured_lima
     )
 
 
