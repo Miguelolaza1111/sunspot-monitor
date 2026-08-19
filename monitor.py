@@ -124,7 +124,7 @@ def send_telegram_message(latest, captured_lima):
             "Telegram no configurado: faltan "
             "TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID."
         )
-        return
+        return False
 
     message = (
         "☀️ Nuevo dato EISN de SILSO\n\n"
@@ -164,16 +164,19 @@ def send_telegram_message(latest, captured_lima):
 
         if '"ok":true' in result:
             print("Mensaje de Telegram enviado correctamente.")
+            return True
         else:
             print(
                 "Telegram respondió con un resultado inesperado: "
                 f"{result}"
             )
+            return False
 
     except Exception as e:
         print(
             f"No fue posible enviar el mensaje de Telegram: {e}"
         )
+        return False
 
 
 def save_data(rows):
@@ -202,12 +205,32 @@ def save_data(rows):
 
     latest = rows[-1]
 
-    # Comprobar si el dato de SILSO cambió
+    # ============================================================
+    # DIAGNÓSTICO
+    # ============================================================
+
+    print("")
+    print("========== DIAGNÓSTICO EISN ==========")
+    print(f"Hora actual UTC: {captured_utc}")
+    print(f"Hora actual Lima: {captured_lima}")
+    print(f"Última fecha recibida de SILSO: {latest['fecha']}")
+
     if existing_rows:
         last = existing_rows[-1]
+        ultima_fecha_guardada = last.get("fecha")
+        print(
+            f"Última fecha guardada: "
+            f"{ultima_fecha_guardada}"
+        )
+    else:
+        last = None
+        ultima_fecha_guardada = None
+        print("Última fecha guardada: NO EXISTE")
 
-        # Comparamos únicamente los datos de SILSO.
-        # La hora de captura no provoca una fila duplicada.
+    # Comprobar si el dato de SILSO cambió
+    dato_nuevo = True
+
+    if existing_rows:
         if (
             last.get("fecha") == latest["fecha"]
             and last.get("eisn") == str(latest["eisn"])
@@ -218,11 +241,29 @@ def save_data(rows):
             and last.get("estaciones_disponibles")
             == str(latest["estaciones_disponibles"])
         ):
-            print(
-                "El dato de SILSO no ha cambiado. "
-                "No se añade una nueva fila."
-            )
-            return
+            dato_nuevo = False
+
+    print(
+        f"¿Es un dato nuevo?: "
+        f"{'SÍ' if dato_nuevo else 'NO'}"
+    )
+
+    print("=======================================")
+    print("")
+
+    if not dato_nuevo:
+        print(
+            "El dato de SILSO no ha cambiado. "
+            "No se añade una nueva fila."
+        )
+
+        print("¿Se envió Telegram?: NO")
+        print(
+            "Motivo: no se detectó un cambio nuevo "
+            "en SILSO."
+        )
+
+        return
 
     # Crear el nuevo registro
     new_row = {
@@ -286,9 +327,14 @@ def save_data(rows):
 
     # Enviar Telegram solamente cuando se detectó
     # y guardó un cambio real en SILSO.
-    send_telegram_message(
+    telegram_enviado = send_telegram_message(
         latest,
         captured_lima
+    )
+
+    print(
+        f"¿Se envió Telegram?: "
+        f"{'SÍ' if telegram_enviado else 'NO'}"
     )
 
 
